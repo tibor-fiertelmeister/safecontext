@@ -1,21 +1,25 @@
-SafeContext pipeline fix
+SafeContext Privacy Gate / validate feature
 
-Upload these files to the SAME paths shown inside this package:
+Upload/replace files at exactly these paths:
 
-src/safecontext/core.py
-src/safecontext/detectors.py
-tests/test_roundtrip.py
-tests/test_secrets.py
-tests/test_diagnostics.py
+NEW:
+  src/safecontext/validate.py
+  tests/test_validate.py
+  tests/test_cli_validate.py
 
-Do not upload the .py files to the repository root.
+REPLACE:
+  src/safecontext/cli.py
 
-What this fixes:
-- protect_text now respects Detection.action
-- REDACT findings become [SECRET_REDACTED] and never enter MappingVault
-- PSEUDONYMIZE findings enter MappingVault and remain reversible
-- context identifiers such as CUSTOMER_ID are restorable
-- Bearer context is preserved while the token value is removed
+Do not upload these .py files to the repository root.
+
+Feature:
+  safecontext validate <file>
+
+Behavior:
+  SAFE    -> prints SAFE TO SHARE and exits 0
+  BLOCKED -> prints detection counts only (never raw values) and exits 1
 
 Suggested commit:
-fix: enforce redaction and pseudonymization actions
+  feat: add privacy validation gate
+
+After commit, run SafeContext Tests in GitHub Actions.
