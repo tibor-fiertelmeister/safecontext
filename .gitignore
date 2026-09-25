@@ -216,3 +216,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+# SafeContext local sensitive artifacts
+*.safecontext-map.json
+.*.safecontext-map.json
+*.protected.log
+*.restored.log
+.env
