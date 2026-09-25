@@ -5,57 +5,104 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from .detectors import detect_entities
+from .detectors import detect_entities, redact_secrets
 from .mapping import MappingVault
+from .policy import DetectionPolicy, build_context_pattern, build_secret_pattern
 
 
-# These are reversible identifiers. Secrets are never placed in the vault.
-PSEUDONYM_KINDS = (
-    "EMAIL",
-    "IP",
-    "HOST",
-    "CUSTOMER_ID",
-    "USER_ID",
-    "ACCOUNT_ID",
-    "TENANT_ID",
-    "SESSION_ID",
-)
-
-TOKEN_PATTERN = re.compile(
-    rf"\b(?:{'|'.join(PSEUDONYM_KINDS)})_[A-F0-9]{{8}}\b"
-)
+TOKEN_PATTERN = re.compile(r"\b[A-Z][A-Z0-9_]*_[A-F0-9]{8}\b")
 
 
-def protect_text(text: str, vault: MappingVault) -> str:
-    """Protect sensitive text according to each detector's requested action.
+def _redact_policy_secrets(
+    text: str,
+    policy: DetectionPolicy | None,
+) -> str:
+    """Redact secrets defined by a custom policy."""
 
-    Reversible identifiers are pseudonymized into the local mapping vault.
-    Secrets are irreversibly replaced with [SECRET_REDACTED].
-    """
-    protected = text
-    detections = detect_entities(text)
+    if policy is None:
+        return text
 
-    # Replace from the end so the original character offsets stay valid.
-    for detection in reversed(detections):
-        if detection.action == "REDACT":
-            replacement = "[SECRET_REDACTED]"
-        elif detection.action == "PSEUDONYMIZE":
-            replacement = vault.pseudonym_for(detection.kind, detection.value)
-        else:
-            # Fail closed for an unknown detector action.
-            replacement = "[SENSITIVE_REDACTED]"
+    result = text
 
-        protected = (
-            protected[: detection.start]
-            + replacement
-            + protected[detection.end :]
+    for rule in policy.secrets:
+        pattern = build_secret_pattern(rule.fields)
+
+        def replace(match: re.Match[str]) -> str:
+            full = match.group(0)
+            value_start = match.start(2) - match.start()
+            return full[:value_start] + "[SECRET_REDACTED]"
+
+        result = pattern.sub(replace, result)
+
+    return result
+
+
+def _detect_policy_identifiers(
+    text: str,
+    policy: DetectionPolicy | None,
+) -> list[tuple[str, str, int, int]]:
+    """Detect custom identifiers defined by a policy."""
+
+    if policy is None:
+        return []
+
+    detections: list[tuple[str, str, int, int]] = []
+
+    for rule in policy.identifiers:
+        pattern = build_context_pattern(rule.fields)
+
+        for match in pattern.finditer(text):
+            start, end = match.span(1)
+            detections.append((rule.name, match.group(1), start, end))
+
+    return sorted(detections, key=lambda item: item[2])
+
+
+def protect_text(
+    text: str,
+    vault: MappingVault,
+    policy: DetectionPolicy | None = None,
+) -> str:
+    """Redact secrets and pseudonymize sensitive identifiers."""
+
+    protected = redact_secrets(text)
+    protected = _redact_policy_secrets(protected, policy)
+
+    replacements: list[tuple[str, str, int, int]] = []
+
+    for detection in detect_entities(protected):
+        if detection.action != "PSEUDONYMIZE":
+            continue
+        replacements.append(
+            (
+                detection.kind,
+                detection.value,
+                detection.start,
+                detection.end,
+            )
         )
+
+    replacements.extend(_detect_policy_identifiers(protected, policy))
+    replacements.sort(key=lambda item: item[2], reverse=True)
+
+    occupied: list[tuple[int, int]] = []
+
+    for kind, value, start, end in replacements:
+        if any(
+            start < existing_end and end > existing_start
+            for existing_start, existing_end in occupied
+        ):
+            continue
+
+        token = vault.pseudonym_for(kind, value)
+        protected = protected[:start] + token + protected[end:]
+        occupied.append((start, end))
 
     return protected
 
 
 def restore_text(text: str, vault: MappingVault) -> str:
-    """Restore reversible SafeContext pseudonyms from the local mapping."""
+    """Restore exact SafeContext pseudonyms from the local mapping."""
 
     def replace(match: re.Match[str]) -> str:
         token = match.group(0)
@@ -64,15 +111,24 @@ def restore_text(text: str, vault: MappingVault) -> str:
     return TOKEN_PATTERN.sub(replace, text)
 
 
-def protect_file(input_path: Path, output_path: Path, mapping_path: Path) -> None:
+def protect_file(
+    input_path: Path,
+    output_path: Path,
+    mapping_path: Path,
+    policy: DetectionPolicy | None = None,
+) -> None:
     vault = MappingVault()
     raw = input_path.read_text(encoding="utf-8")
-    protected = protect_text(raw, vault)
+    protected = protect_text(raw, vault, policy=policy)
     output_path.write_text(protected, encoding="utf-8")
     vault.save(mapping_path)
 
 
-def restore_file(input_path: Path, output_path: Path, mapping_path: Path) -> None:
+def restore_file(
+    input_path: Path,
+    output_path: Path,
+    mapping_path: Path,
+) -> None:
     vault = MappingVault.load(mapping_path)
     protected = input_path.read_text(encoding="utf-8")
     restored = restore_text(protected, vault)

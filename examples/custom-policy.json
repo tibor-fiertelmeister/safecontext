@@ -1,0 +1,10 @@
+{
+  "identifiers": [
+    {"name": "EMPLOYEE_ID", "fields": ["employee_id", "employee_number"]},
+    {"name": "CASE_ID", "fields": ["case_id", "case_number"]},
+    {"name": "APPLICATION_ID", "fields": ["application_id", "app_id"]}
+  ],
+  "secrets": [
+    {"name": "PRIVATE_TOKEN", "fields": ["private_token", "internal_token"]}
+  ]
+}
