@@ -1,0 +1,97 @@
+name: SafeContext Round-Trip
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  roundtrip:
+    name: Protect and restore synthetic data
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install SafeContext
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Protect synthetic log
+        run: |
+          safecontext protect examples/sample.log
+
+      - name: Verify protected log
+        run: |
+          echo "===== PROTECTED LOG ====="
+          cat examples/sample.protected.log
+
+      - name: Simulate external LLM response
+        run: |
+          cat > examples/llm-response.md <<'EOF'
+          # Security Analysis
+
+          Repeated failed login attempts were observed for EMAIL_3254C673
+          against HOST_2221EF20 from IP_6509F946.
+
+          Recommended action:
+
+          Investigate EMAIL_3254C673 and review authentication events on
+          HOST_2221EF20 originating from IP_6509F946.
+
+          A separate request contained [SECRET_REDACTED].
+          EOF
+
+      - name: Restore local context
+        run: |
+          safecontext restore examples/llm-response.md
+
+      - name: Show restored analysis
+        run: |
+          echo "===== RESTORED ANALYSIS ====="
+          cat examples/llm-response.restored.md
+
+      - name: Verify round-trip
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          output = Path("examples/llm-response.restored.md").read_text()
+
+          expected = [
+              "alice@example.com",
+              "prod-auth-01.internal",
+              "10.20.30.40",
+          ]
+
+          missing = [value for value in expected if value not in output]
+
+          if missing:
+              raise SystemExit(
+                  "ROUND-TRIP FAILED. Values were not restored: "
+                  + ", ".join(missing)
+              )
+
+          if "synthetic-demo-key-123" in output:
+              raise SystemExit(
+                  "SECURITY FAILURE: redacted secret was restored."
+              )
+
+          if "[SECRET_REDACTED]" not in output:
+              raise SystemExit(
+                  "SECURITY FAILURE: secret redaction marker disappeared."
+              )
+
+          print("Round-trip check: PASS")
+          print("Pseudonymized identifiers were restored.")
+          print("Irreversibly redacted secrets were NOT restored.")
+          PY
