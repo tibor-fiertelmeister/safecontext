@@ -1,0 +1,157 @@
+name: SafeContext Privacy Gate Demo
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  privacy-gate-demo:
+    name: End-to-end privacy gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install SafeContext
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Show synthetic raw input
+        run: |
+          echo "========================================"
+          echo "1. SYNTHETIC RAW INPUT"
+          echo "========================================"
+          cat examples/privacy-gate-demo.log
+
+      - name: Confirm raw input is blocked
+        shell: bash
+        run: |
+          echo
+          echo "========================================"
+          echo "2. PRIVACY GATE BEFORE PROTECTION"
+          echo "========================================"
+
+          set +e
+          safecontext validate examples/privacy-gate-demo.log
+          status=$?
+          set -e
+
+          if [ "$status" -ne 1 ]; then
+            echo "ERROR: Raw sensitive input was expected to be blocked."
+            exit 1
+          fi
+
+          echo
+          echo "Expected result confirmed: raw input is BLOCKED."
+
+      - name: Inspect raw input
+        run: |
+          echo
+          echo "========================================"
+          echo "3. INSPECT RAW INPUT"
+          echo "========================================"
+          safecontext inspect examples/privacy-gate-demo.log
+
+      - name: Protect input locally
+        run: |
+          echo
+          echo "========================================"
+          echo "4. PROTECT"
+          echo "========================================"
+
+          safecontext protect \
+            examples/privacy-gate-demo.log \
+            --output /tmp/privacy-gate-demo.protected.log \
+            --mapping /tmp/privacy-gate-demo.safecontext-map.json
+
+          echo
+          echo "Protected LLM-visible content:"
+          cat /tmp/privacy-gate-demo.protected.log
+
+      - name: Confirm protected content is safe
+        run: |
+          echo
+          echo "========================================"
+          echo "5. PRIVACY GATE AFTER PROTECTION"
+          echo "========================================"
+
+          safecontext validate /tmp/privacy-gate-demo.protected.log
+
+          echo
+          echo "Protected content passed the Privacy Gate."
+
+      - name: Simulate LLM response
+        run: |
+          echo
+          echo "========================================"
+          echo "6. SIMULATED LLM RESPONSE"
+          echo "========================================"
+
+          cp /tmp/privacy-gate-demo.protected.log /tmp/privacy-gate-demo.llm-response.log
+          printf '\nLLM_ANALYSIS: Authentication failure requires investigation.\n' \
+            >> /tmp/privacy-gate-demo.llm-response.log
+
+          cat /tmp/privacy-gate-demo.llm-response.log
+
+      - name: Restore local context
+        run: |
+          echo
+          echo "========================================"
+          echo "7. LOCAL RESTORE"
+          echo "========================================"
+
+          safecontext restore \
+            /tmp/privacy-gate-demo.llm-response.log \
+            --mapping /tmp/privacy-gate-demo.safecontext-map.json \
+            --output /tmp/privacy-gate-demo.restored.log
+
+          cat /tmp/privacy-gate-demo.restored.log
+
+      - name: Verify end-to-end security properties
+        shell: bash
+        run: |
+          echo
+          echo "========================================"
+          echo "8. SECURITY VERIFICATION"
+          echo "========================================"
+
+          protected=/tmp/privacy-gate-demo.protected.log
+          restored=/tmp/privacy-gate-demo.restored.log
+          mapping=/tmp/privacy-gate-demo.safecontext-map.json
+
+          ! grep -Fq "alice@example.com" "$protected"
+          ! grep -Fq "10.20.30.40" "$protected"
+          ! grep -Fq "prod-db-01.internal" "$protected"
+          ! grep -Fq "CUST-12345" "$protected"
+          ! grep -Fq "SC_DEMO_PASSWORD_987" "$protected"
+
+          grep -Fq "[SECRET_REDACTED]" "$protected"
+
+          grep -Fq "alice@example.com" "$restored"
+          grep -Fq "10.20.30.40" "$restored"
+          grep -Fq "prod-db-01.internal" "$restored"
+          grep -Fq "CUST-12345" "$restored"
+
+          ! grep -Fq "SC_DEMO_PASSWORD_987" "$restored"
+          grep -Fq "[SECRET_REDACTED]" "$restored"
+
+          ! grep -Fq "SC_DEMO_PASSWORD_987" "$mapping"
+
+          echo "PASS: raw sensitive input was blocked."
+          echo "PASS: identifiers were pseudonymized before LLM exposure."
+          echo "PASS: secret value was irreversibly redacted."
+          echo "PASS: protected content passed the Privacy Gate."
+          echo "PASS: reversible identifiers were restored locally."
+          echo "PASS: secret value was not restored or stored in the mapping."
+          echo
+          echo "SafeContext end-to-end Privacy Gate demo PASSED."
