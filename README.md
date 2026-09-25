@@ -1,84 +1,97 @@
 # SafeContext
 
-**A privacy-first local protection layer for working with sensitive data and LLMs.**
+**Privacy-first protection for sensitive data in LLM workflows.**
 
-SafeContext is an experimental security tool for protecting sensitive logs, reports, and structured text before they are shared with an external or local Large Language Model (LLM).
+[![SafeContext Tests](https://github.com/tibor-fiertelmeister/safecontext/actions/workflows/tests.yml/badge.svg)](https://github.com/tibor-fiertelmeister/safecontext/actions/workflows/tests.yml)
+![Python](https://img.shields.io/badge/python-3.12%2B-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+![Status](https://img.shields.io/badge/status-experimental-orange)
 
-Instead of sending raw identifiers, infrastructure details, or credentials directly to an AI system, SafeContext processes the data first:
+SafeContext is an experimental security tool that creates a local privacy
+boundary between sensitive operational data and external or local LLMs.
 
-- reversible identifiers are replaced with deterministic pseudonyms;
-- secrets and credentials are irreversibly redacted;
-- a Privacy Gate validates that protected content is safe to share;
-- LLM responses can be processed locally to restore the original operational context.
-
-The goal is simple:
-
-> **Keep sensitive context local while preserving enough structure for useful AI-assisted analysis.**
-
----
-
-## How it works
+It detects sensitive information, pseudonymizes identifiers that may need
+to be restored later, irreversibly redacts secrets, and validates the
+result before the protected content is allowed to leave the local trust
+boundary.
 
 ```text
-                  LOCAL TRUST BOUNDARY
-┌─────────────────────────────────────────────────────┐
-│                                                     │
-│  Raw Input                                          │
-│      │                                              │
-│      ▼                                              │
-│   INSPECT                                           │
-│      │                                              │
-│      ▼                                              │
-│   PROTECT                                           │
-│      │                                              │
-│      ├── Identifiers ──► Pseudonymize               │
-│      │                                              │
-│      └── Secrets ──────► Irreversible Redaction     │
-│      │                                              │
-│      ▼                                              │
-│   PRIVACY GATE                                      │
-│      │                                              │
-│      ├── Unsafe ───────► BLOCK                      │
-│      │                                              │
-│      └── Safe ─────────► Allow                      │
-│                                                     │
-└──────────────────────┬──────────────────────────────┘
-                       │
-                       │ Protected content only
-                       ▼
-                 External / Local LLM
-                       │
-                       │ Protected response
-                       ▼
-┌─────────────────────────────────────────────────────┐
-│                  LOCAL TRUST BOUNDARY               │
-│                                                     │
-│   RESTORE                                           │
-│      │                                              │
-│      ├── Pseudonyms ──► Original identifiers        │
-│      │                                              │
-│      └── Secrets ─────► Remain redacted             │
-│                                                     │
-│   Final locally rehydrated result                   │
-│                                                     │
-└─────────────────────────────────────────────────────┘
+Sensitive Input
+      |
+      v
++-----------------------+
+|   Local Inspection    |
++-----------------------+
+      |
+      v
++-----------------------+
+| Pseudonymization      |
+| + Secret Redaction    |
++-----------------------+
+      |
+      v
++-----------------------+
+|     Privacy Gate      |
+|  validate before use  |
++-----------------------+
+      |
+      v
+ Sanitized Context
+      |
+      v
+ External / Local LLM
+      |
+      v
+ Sanitized Response
+      |
+      v
++-----------------------+
+|   Local Rehydration   |
++-----------------------+
+      |
+      v
+ Final Local Output
 ```
 
-Raw sensitive data and pseudonym mappings are intended to remain inside the local trust boundary.
+## Why SafeContext?
 
----
+LLMs can be extremely useful for analyzing security logs, incidents,
+configuration data, vulnerability findings, and operational reports.
+
+The problem is that this data can contain information that should not be
+unnecessarily exposed to an external AI service.
+
+Examples include:
+
+- email addresses and usernames
+- internal hostnames and domains
+- IP addresses
+- customer, account, tenant, user, and session identifiers
+- infrastructure-specific identifiers
+- passwords
+- API keys
+- access and refresh tokens
+- bearer tokens
+- JWTs
+- other environment-specific information
+
+SafeContext reduces that exposure before the data reaches the model.
+
+The goal is not simply to remove information. The goal is to preserve
+enough structure for useful analysis while minimizing disclosure of the
+original environment.
 
 ## Example
 
-Raw input:
+Sensitive input:
 
 ```text
 alice@example.com connected to prod-db-01.internal
 from 10.20.30.40 customer_id=CUST-12345
-password=example-secret-value
+password=ExampleSecretValue
 ```
 
-SafeContext protection produces a representation similar to:
+SafeContext can transform it into a representation similar to:
 
 ```text
 EMAIL_562D450E connected to HOST_7B71BA02
@@ -86,58 +99,216 @@ from IP_D5E06542 customer_id=CUSTOMER_ID_F4B57E0E
 password=[SECRET_REDACTED]
 ```
 
-The protected version preserves relationships between entities without exposing their original values.
+The LLM can still reason about relationships between entities without
+receiving the original identifiers.
 
-After an LLM processes the protected representation, SafeContext can restore the reversible identifiers locally:
+After analysis, pseudonymized identifiers can be restored locally.
 
-```text
-alice@example.com connected to prod-db-01.internal
-from 10.20.30.40 customer_id=CUST-12345
-password=[SECRET_REDACTED]
-```
-
-The password is never restored because secrets are intentionally excluded from the reversible mapping.
+Secrets cannot.
 
 ---
 
-## Privacy model
+## Core security model
 
-SafeContext treats sensitive information differently depending on its type.
+SafeContext separates sensitive values into two categories.
 
-### Reversible pseudonymization
+### Reversible identifiers
 
-Identifiers that may be required later for operational context are replaced with deterministic pseudonyms.
+Values that may be required again after LLM processing are replaced with
+stable pseudonyms.
 
-Currently supported examples include:
+Examples:
+
+```text
+alice@example.com       -> EMAIL_562D450E
+prod-db-01.internal     -> HOST_7B71BA02
+10.20.30.40             -> IP_D5E06542
+CUST-12345              -> CUSTOMER_ID_F4B57E0E
+```
+
+The mapping between the original value and pseudonym remains inside the
+local trust boundary.
+
+### Irreversible secrets
+
+Credentials and authentication material should never be sent to the LLM
+and should not be recoverable through the mapping vault.
+
+Examples:
+
+```text
+password=...              -> password=[SECRET_REDACTED]
+api_key=...               -> api_key=[SECRET_REDACTED]
+Authorization: Bearer ... -> Authorization: Bearer [SECRET_REDACTED]
+JWT                       -> [SECRET_REDACTED]
+```
+
+This distinction is fundamental to the SafeContext design:
+
+> **Identifiers may be pseudonymized. Secrets must be removed.**
+
+---
+
+## Privacy Gate
+
+Pseudonymization alone is not enough.
+
+Before protected content is allowed to cross the local trust boundary,
+SafeContext can validate it using a **Privacy Gate**.
+
+```text
+Raw input
+   |
+   | validate
+   v
+ BLOCKED
+   |
+   | protect locally
+   v
+Protected input
+   |
+   | validate
+   v
+ ALLOWED
+   |
+   v
+LLM
+```
+
+The intended security property is **fail closed**:
+
+> If SafeContext still detects raw sensitive information, external
+> processing should not continue.
+
+This creates a separate validation layer instead of assuming that the
+protection stage worked correctly.
+
+---
+
+## CLI workflow
+
+### Inspect
+
+Inspect input for sensitive entities before processing:
+
+```bash
+safecontext inspect incident.log
+```
+
+This can be used to understand what SafeContext detects without modifying
+the source data.
+
+### Protect
+
+Create an LLM-safe representation:
+
+```bash
+safecontext protect incident.log
+```
+
+SafeContext pseudonymizes supported identifiers, redacts detected secrets,
+and creates a local mapping for reversible values.
+
+### Validate
+
+Check whether content is safe to cross the privacy boundary:
+
+```bash
+safecontext validate incident.protected.log
+```
+
+Unsafe content causes validation to fail.
+
+This makes the command suitable for scripts, CI/CD workflows, or future
+LLM integration pipelines where processing must stop if privacy checks
+fail.
+
+### Restore
+
+After an LLM has processed the protected representation:
+
+```bash
+safecontext restore analysis.md -m .incident.safecontext-map.json
+```
+
+SafeContext restores known pseudonyms using the local mapping.
+
+Irreversibly redacted secrets remain redacted.
+
+---
+
+## End-to-end workflow
+
+The current implementation supports the following security flow:
+
+```text
+1. Inspect raw input
+           |
+           v
+2. Privacy Gate blocks raw sensitive content
+           |
+           v
+3. Protect locally
+           |
+           +--> pseudonymize identifiers
+           |
+           +--> redact secrets
+           |
+           v
+4. Validate protected representation
+           |
+           v
+5. Send only sanitized context to the LLM
+           |
+           v
+6. Receive sanitized response
+           |
+           v
+7. Restore pseudonymized identifiers locally
+```
+
+The repository contains a GitHub Actions demonstration of this complete
+flow.
+
+The demo verifies that:
+
+- raw sensitive input is rejected by the Privacy Gate
+- identifiers are pseudonymized
+- secrets are removed
+- protected content passes validation
+- an LLM response can be simulated using only protected data
+- original identifiers can be restored locally
+- redacted secrets are never restored
+
+---
+
+## Current detection capabilities
+
+SafeContext currently includes deterministic detection for several
+classes of sensitive information.
+
+### Structured identifiers
 
 - email addresses
 - IPv4 addresses
-- internal hostnames
-- customer IDs
-- user IDs
-- account IDs
-- tenant IDs
-- session IDs
+- internal-style hostnames
 
-Example:
+### Context-aware identifiers
 
-```text
-10.20.30.40
-```
+SafeContext can also use surrounding field names to identify values whose
+format alone may not indicate that they are sensitive.
 
-becomes:
+Current examples include:
 
-```text
-IP_D5E06542
-```
+- `customer_id`
+- `user_id`
+- `account_id`
+- `tenant_id`
+- `session_id`
 
-The original value is stored only in the local mapping vault so it can later be restored.
+### Secrets
 
-### Irreversible secret redaction
-
-Credentials and authentication material should not be recoverable from LLM-visible content.
-
-SafeContext currently detects examples including:
+Current secret detection includes:
 
 - passwords
 - API keys
@@ -146,338 +317,168 @@ SafeContext currently detects examples including:
 - bearer tokens
 - JWTs
 
-Example:
-
-```text
-password=example-secret-value
-```
-
-becomes:
-
-```text
-password=[SECRET_REDACTED]
-```
-
-Secrets are not added to the reversible mapping.
+Detection is intentionally deterministic and explainable at this stage of
+the project.
 
 ---
 
-## Privacy Gate
+## Design principles
 
-Protection and validation are separate security controls.
+### Local-first
 
-SafeContext does not assume that content is safe merely because the protection step completed.
-
-The Privacy Gate performs a second inspection before content is considered suitable for external processing.
-
-```text
-Raw sensitive content
-        │
-        ▼
-   Privacy Gate
-        │
-        ▼
-     BLOCKED
-```
-
-After successful protection:
-
-```text
-Protected content
-        │
-        ▼
-   Privacy Gate
-        │
-        ▼
-  SAFE TO SHARE
-```
-
-Already protected SafeContext pseudonyms and `[SECRET_REDACTED]` markers are recognized as protected representations rather than raw sensitive values.
-
-This creates a fail-closed boundary between local processing and external AI processing.
-
----
-
-## CLI
-
-### Inspect
-
-Inspect a file for sensitive entities without modifying it:
-
-```bash
-safecontext inspect incident.log
-```
-
-This can be used to understand what SafeContext detects before protection.
-
-### Protect
-
-Protect a text or log file:
-
-```bash
-safecontext protect incident.log
-```
-
-SafeContext creates a protected representation and a local pseudonym mapping.
-
-Explicit output locations can also be supplied:
-
-```bash
-safecontext protect incident.log \
-  --output incident.protected.log \
-  --mapping .incident.safecontext-map.json
-```
-
-The mapping contains original identifiers and must be treated as sensitive.
-
-### Validate
-
-Validate content before sharing it externally:
-
-```bash
-safecontext validate incident.protected.log
-```
-
-Safe content returns a successful exit status.
-
-If raw sensitive content is detected, validation fails with a non-zero exit status so the Privacy Gate can also be used in automated workflows.
-
-### Restore
-
-Restore reversible identifiers locally:
-
-```bash
-safecontext restore analysis.md \
-  --mapping .incident.safecontext-map.json \
-  --output analysis.restored.md
-```
-
-Pseudonymized identifiers are restored.
-
-Irreversibly redacted secrets remain:
-
-```text
-[SECRET_REDACTED]
-```
-
----
-
-## End-to-end Privacy Gate demo
-
-The repository contains a GitHub Actions workflow demonstrating the complete SafeContext lifecycle using synthetic data only.
-
-The demo verifies:
-
-```text
-Synthetic sensitive input
-        │
-        ▼
-Privacy Gate
-        │
-        └── BLOCKED
-        │
-        ▼
-Inspect
-        │
-        ▼
-Protect
-        │
-        ▼
-Privacy Gate
-        │
-        └── SAFE TO SHARE
-        │
-        ▼
-Simulated LLM response
-        │
-        ▼
-Local restore
-        │
-        ▼
-Security verification
-```
-
-The workflow checks that:
-
-- raw sensitive input is blocked;
-- identifiers are pseudonymized before simulated LLM exposure;
-- secrets are irreversibly redacted;
-- protected content passes the Privacy Gate;
-- reversible identifiers can be restored locally;
-- secrets cannot be restored;
-- secrets are not stored in the local pseudonym mapping.
-
-The workflow can be run manually from:
-
-```text
-Actions → SafeContext Privacy Gate Demo → Run workflow
-```
-
----
-
-## Automated testing
-
-SafeContext includes automated tests covering the current privacy pipeline, including:
-
-- deterministic pseudonym generation;
-- password redaction;
-- API key redaction;
-- access token redaction;
-- bearer token redaction;
-- JWT redaction;
-- reversible identifier round trips;
-- contextual identifier handling;
-- mapping isolation;
-- Privacy Gate validation;
-- CLI validation behavior;
-- protected-value recognition;
-- secret non-restoration.
-
-The current test suite contains **25 automated tests**.
-
-GitHub Actions runs the test suite automatically on repository changes.
-
----
-
-## Security design principles
-
-SafeContext follows several core principles.
-
-### Local first
-
-Raw sensitive data should be processed before it reaches an external AI service.
+Raw sensitive data should be processed before it crosses the local trust
+boundary.
 
 ### Data minimization
 
-Only information required for useful analysis should leave the local trust boundary.
+Only the information required for analysis should be exposed to an LLM.
 
-### Reversible identifiers
+### Reversible pseudonymization
 
-Operational identifiers can be restored when they are required in the final result.
+Identifiers can remain consistent during analysis and can later be
+restored locally.
 
-### Irreversible secrets
+### Irreversible secret redaction
 
-Credentials and authentication material should never be recoverable from LLM-visible data.
+Credentials and authentication material must not be recoverable from the
+LLM-visible representation.
 
 ### Fail closed
 
-If privacy validation detects unprotected sensitive content, external processing should be blocked.
-
-### Defense in depth
-
-Detection, transformation, and validation are separate stages rather than a single sanitization operation.
+If privacy validation detects unsafe content, external processing should
+stop.
 
 ### Provider independent
 
-The protection layer is independent of any specific LLM provider.
+The protection layer is intentionally independent from any specific LLM
+provider.
 
-### Traceable
+### Explainable detection
 
-Transformations should be deterministic, understandable, and testable.
+Security transformations should be understandable, testable, and
+auditable.
 
 ---
 
-## Repository structure
+## Testing
 
-```text
-safecontext/
-├── .github/
-│   └── workflows/
-│       ├── demo.yml
-│       ├── inspect.yml
-│       ├── privacy-gate-demo.yml
-│       ├── roundtrip.yml
-│       └── tests.yml
-│
-├── docs/
-│
-├── examples/
-│   └── privacy-gate-demo.log
-│
-├── src/
-│   └── safecontext/
-│       ├── cli.py
-│       ├── core.py
-│       ├── detectors.py
-│       ├── inspect.py
-│       ├── mapping.py
-│       └── validate.py
-│
-├── tests/
-│
-├── .gitignore
-├── LICENSE
-├── pyproject.toml
-└── README.md
+SafeContext includes automated tests covering the protection pipeline,
+including:
+
+- deterministic pseudonym generation
+- secret redaction
+- bearer-token handling
+- JWT redaction
+- identifier restoration
+- contextual identifier handling
+- Privacy Gate validation
+- CLI validation behavior
+- end-to-end protection and restoration properties
+
+Tests run automatically through GitHub Actions.
+
+```bash
+pytest -v
 ```
 
 ---
 
-## Current project status
+## Security architecture
 
-> **Experimental / early development**
+SafeContext currently follows this trust boundary:
 
-SafeContext is currently a security engineering, research, and portfolio project.
+```text
+                LOCAL TRUST BOUNDARY
 
-The core privacy pipeline is operational and covered by automated tests, but SafeContext should **not currently be treated as a guarantee that arbitrary production data has been fully sanitized**.
+ Sensitive Data
+       |
+       v
+ +-------------+
+ | SafeContext |
+ +-------------+
+       |
+       +------> Local Mapping Vault
+       |        (sensitive)
+       |
+       v
+ Privacy Gate
+       |
+       | sanitized content only
+       |
+-------+--------------------------------
+       |
+       v
+ External LLM / AI Service
+```
 
-Detection is currently deterministic and primarily pattern- and context-based.
+The external model should never require access to the pseudonym mapping.
 
-Real-world sensitive data can appear in formats that are difficult or impossible to identify reliably using deterministic rules alone.
-
-For this reason, SafeContext should currently be considered an additional privacy control rather than a replacement for organizational data handling policies, DLP systems, access controls, or human review.
-
----
-
-## Current limitations
-
-The current implementation has several intentional limitations:
-
-- detection coverage is not exhaustive;
-- custom organization-specific identifiers may require additional rules;
-- mapping storage is local JSON and is not yet encrypted at rest;
-- detection currently focuses primarily on text and log-style input;
-- semantic sensitive-data classification is not yet implemented;
-- the project does not currently send content to an LLM itself;
-- the GitHub demo simulates the LLM processing stage.
-
-These limitations are explicit parts of the current threat model.
-
----
-
-## Roadmap
-
-Potential future development includes:
-
-- configurable organization-specific detection policies;
-- custom identifier patterns;
-- additional contextual detectors;
-- entropy and format-based secret detection;
-- encrypted local mapping storage;
-- structured JSON and security-event processing;
-- richer Privacy Gate policies;
-- confidence-based detection;
-- audit-friendly transformation reports;
-- local DLP-style inspection;
-- security-event enrichment;
-- optional MITRE ATT&CK technique mapping after privacy protection;
-- integrations with local and external LLM workflows.
-
-A key architectural principle is that security enrichment and AI analysis should happen **after** privacy protection whenever possible.
+This keeps re-identification capability on the trusted side of the
+boundary.
 
 ---
 
 ## Threat model
 
-SafeContext maintains a separate threat model under:
+The project includes an evolving threat model under:
 
 ```text
 docs/
 ```
 
-The central trust assumption is:
+Areas considered include:
 
-> **Raw sensitive data and reversible pseudonym mappings stay local. External systems receive only protected representations.**
+- accidental disclosure of identifiers
+- credential leakage
+- incomplete detection
+- mapping exposure
+- unsafe outbound content
+- incorrect restoration
+- trust-boundary violations
+
+SafeContext should be treated as one privacy control in a broader secure
+AI architecture rather than as a replacement for organizational data
+governance or provider-side security controls.
+
+---
+
+## Project status
+
+> **Experimental / active development**
+
+SafeContext is currently a security engineering and research project.
+
+It should **not** yet be relied upon as a guarantee that arbitrary
+production data has been completely sanitized.
+
+The current implementation establishes the core architecture:
+
+**Inspect → Protect → Validate → Process → Restore**
+
+Future work may include:
+
+- configurable detection policies
+- additional contextual identifiers
+- improved secret detection
+- entropy and format-based detection
+- encrypted local mapping storage
+- structured JSON/log processing
+- audit-friendly transformation reports
+- integration patterns for LLM workflows
+- security-event enrichment after privacy protection
+
+---
+
+## Security note
+
+SafeContext intentionally keeps the mapping vault separate from
+LLM-visible content.
+
+Mapping files may contain sensitive original identifiers and must be
+protected accordingly.
+
+Do not upload real mapping files, credentials, or production-sensitive
+test data to the repository.
 
 ---
 
