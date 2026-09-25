@@ -1,25 +1,19 @@
-SafeContext Privacy Gate / validate feature
+SafeContext Privacy Gate false-positive fix
 
-Upload/replace files at exactly these paths:
-
-NEW:
+Replace exactly:
   src/safecontext/validate.py
   tests/test_validate.py
-  tests/test_cli_validate.py
 
-REPLACE:
-  src/safecontext/cli.py
+Why:
+The privacy gate correctly re-detected contextual fields after protection, but
+it did not distinguish SafeContext-generated pseudonyms/redaction markers from
+raw sensitive values.
 
-Do not upload these .py files to the repository root.
+The fix treats only canonical SafeContext outputs as already protected:
+  [SECRET_REDACTED]
+  <KIND>_<8 uppercase hexadecimal characters>
 
-Feature:
-  safecontext validate <file>
-
-Behavior:
-  SAFE    -> prints SAFE TO SHARE and exits 0
-  BLOCKED -> prints detection counts only (never raw values) and exits 1
+A lookalike such as CUSTOMER_ID_NOTSAFE remains BLOCKED.
 
 Suggested commit:
-  feat: add privacy validation gate
-
-After commit, run SafeContext Tests in GitHub Actions.
+  fix: recognize protected values in privacy gate

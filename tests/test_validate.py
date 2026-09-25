@@ -43,6 +43,27 @@ def test_validate_accepts_protected_content():
     assert result.counts == {}
 
 
+def test_validate_accepts_redaction_marker():
+    result = validate_text("password=[SECRET_REDACTED]")
+
+    assert result.safe is True
+    assert result.counts == {}
+
+
+def test_validate_accepts_contextual_pseudonym():
+    result = validate_text("customer_id=CUSTOMER_ID_F4B57E0E")
+
+    assert result.safe is True
+    assert result.counts == {}
+
+
+def test_validate_still_blocks_fake_contextual_value():
+    result = validate_text("customer_id=CUSTOMER_ID_NOTSAFE")
+
+    assert result.safe is False
+    assert result.counts["CUSTOMER_ID"] == 1
+
+
 def test_validation_report_does_not_expose_sensitive_values():
     raw = "alice@example.com from 10.20.30.40"
     result = validate_text(raw)

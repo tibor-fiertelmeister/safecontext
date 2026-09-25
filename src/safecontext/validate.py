@@ -20,17 +20,42 @@ class ValidationResult:
         return dict(Counter(item.kind for item in self.detections))
 
 
-def validate_text(text: str) -> ValidationResult:
-    """Check whether text still contains unprotected sensitive values.
+def _is_already_protected(detection: Detection) -> bool:
+    """Return True when a detection is already a SafeContext-safe value.
 
-    SafeContext pseudonyms such as EMAIL_AB12CD34 are not detected as raw
-    identifiers, while any remaining raw identifiers or secrets cause the
-    privacy gate to fail.
+    Context-aware detectors intentionally still recognize fields such as
+    customer_id=..., even after the value has been pseudonymized. Likewise,
+    secret detectors recognize the explicit redaction marker. The privacy
+    gate must treat those SafeContext outputs as protected rather than as
+    fresh leaks.
     """
-    detections = tuple(detect_entities(text))
+    if detection.action == "REDACT":
+        return detection.value == "[SECRET_REDACTED]"
+
+    if detection.action == "PSEUDONYMIZE":
+        expected_prefix = f"{detection.kind}_"
+        suffix = detection.value[len(expected_prefix):] if detection.value.startswith(expected_prefix) else ""
+
+        return (
+            detection.value.startswith(expected_prefix)
+            and len(suffix) == 8
+            and all(char in "0123456789ABCDEF" for char in suffix)
+        )
+
+    return False
+
+
+def validate_text(text: str) -> ValidationResult:
+    """Check whether text still contains unprotected sensitive values."""
+    unsafe_detections = tuple(
+        detection
+        for detection in detect_entities(text)
+        if not _is_already_protected(detection)
+    )
+
     return ValidationResult(
-        safe=not detections,
-        detections=detections,
+        safe=not unsafe_detections,
+        detections=unsafe_detections,
     )
 
 
