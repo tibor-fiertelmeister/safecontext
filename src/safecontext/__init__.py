@@ -1,3 +1,3 @@
-"""SafeContext: local pseudonymization for privacy-preserving LLM workflows."""
+"""SafeContext package."""
 
 __version__ = "0.1.0"
