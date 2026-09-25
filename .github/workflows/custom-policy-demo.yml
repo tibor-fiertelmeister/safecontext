@@ -1,0 +1,189 @@
+name: SafeContext Custom Policy Demo
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  custom-policy-demo:
+    name: Custom policy privacy flow
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install SafeContext
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Show synthetic corporate-style input
+        run: |
+          echo "=== SYNTHETIC RAW INPUT ==="
+          cat examples/custom-policy-demo.log
+
+      - name: Load custom policy and protect input
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from safecontext.core import protect_text
+          from safecontext.mapping import MappingVault
+          from safecontext.policy import load_policy
+
+          raw_path = Path("examples/custom-policy-demo.log")
+          policy_path = Path("examples/custom-policy.json")
+          protected_path = Path("examples/custom-policy-demo.protected.log")
+          mapping_path = Path(".custom-policy-demo.safecontext-map.json")
+
+          raw = raw_path.read_text(encoding="utf-8")
+          policy = load_policy(policy_path)
+          vault = MappingVault(salt="safecontext-demo-salt")
+
+          protected = protect_text(raw, vault, policy=policy)
+          protected_path.write_text(protected, encoding="utf-8")
+          vault.save(mapping_path)
+
+          print("Custom policy loaded.")
+          print(f"Identifier rules: {len(policy.identifiers)}")
+          print(f"Secret rules: {len(policy.secrets)}")
+          PY
+
+      - name: Show protected output
+        run: |
+          echo "=== PROTECTED OUTPUT ==="
+          cat examples/custom-policy-demo.protected.log
+
+      - name: Verify custom identifiers and secret protection
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          protected = Path(
+              "examples/custom-policy-demo.protected.log"
+          ).read_text(encoding="utf-8")
+
+          forbidden = [
+              "EMP-99182",
+              "INC-2026-5541",
+              "APP-8821",
+              "SyntheticPrivateValue987",
+              "alice@example.com",
+              "10.20.30.40",
+              "prod-db-01.internal",
+          ]
+
+          leaked = [value for value in forbidden if value in protected]
+          if leaked:
+              raise SystemExit(
+                  "Privacy verification failed: raw values remain."
+              )
+
+          required_markers = [
+              "EMPLOYEE_ID_",
+              "CASE_ID_",
+              "APPLICATION_ID_",
+              "EMAIL_",
+              "IP_",
+              "HOST_",
+              "[SECRET_REDACTED]",
+          ]
+
+          missing = [
+              marker for marker in required_markers
+              if marker not in protected
+          ]
+          if missing:
+              raise SystemExit(
+                  "Privacy verification failed: expected protected "
+                  "markers are missing."
+              )
+
+          print("PASS: raw sensitive values are absent.")
+          print("PASS: custom identifiers were pseudonymized.")
+          print("PASS: custom secret was irreversibly redacted.")
+          PY
+
+      - name: Simulate LLM-visible content
+        run: |
+          cp examples/custom-policy-demo.protected.log              examples/custom-policy-demo.llm-response.log
+          echo "" >> examples/custom-policy-demo.llm-response.log
+          echo "Analysis: correlated activity retained across pseudonyms."             >> examples/custom-policy-demo.llm-response.log
+          echo "=== LLM-VISIBLE CONTENT ==="
+          cat examples/custom-policy-demo.llm-response.log
+
+      - name: Restore local context
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from safecontext.core import restore_text
+          from safecontext.mapping import MappingVault
+
+          mapping_path = Path(".custom-policy-demo.safecontext-map.json")
+          response_path = Path(
+              "examples/custom-policy-demo.llm-response.log"
+          )
+          restored_path = Path(
+              "examples/custom-policy-demo.restored.log"
+          )
+
+          vault = MappingVault.load(mapping_path)
+          response = response_path.read_text(encoding="utf-8")
+          restored = restore_text(response, vault)
+          restored_path.write_text(restored, encoding="utf-8")
+          PY
+
+      - name: Show locally restored result
+        run: |
+          echo "=== LOCALLY RESTORED RESULT ==="
+          cat examples/custom-policy-demo.restored.log
+
+      - name: Verify end-to-end privacy properties
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          restored = Path(
+              "examples/custom-policy-demo.restored.log"
+          ).read_text(encoding="utf-8")
+
+          restored_identifiers = [
+              "EMP-99182",
+              "INC-2026-5541",
+              "APP-8821",
+              "alice@example.com",
+              "10.20.30.40",
+              "prod-db-01.internal",
+          ]
+
+          missing = [
+              value for value in restored_identifiers
+              if value not in restored
+          ]
+          if missing:
+              raise SystemExit(
+                  "Round-trip verification failed: identifiers missing."
+              )
+
+          if "SyntheticPrivateValue987" in restored:
+              raise SystemExit(
+                  "Security verification failed: secret was restored."
+              )
+
+          if "[SECRET_REDACTED]" not in restored:
+              raise SystemExit(
+                  "Security verification failed: redaction marker missing."
+              )
+
+          print("PASS: identifiers restored locally.")
+          print("PASS: secret remained irreversibly redacted.")
+          print("PASS: custom policy end-to-end demo completed.")
+          PY
