@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .core import protect_file, restore_file
 from .inspect import inspect_text
+from .quickstart import run_quickstart
 from .validate import format_validation_report, validate_text
 
 
@@ -38,6 +39,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Fail if a file still contains unprotected sensitive data.",
     )
     validate.add_argument("input", type=Path)
+
+    subparsers.add_parser(
+        "quickstart",
+        help="Run a safe synthetic end-to-end demonstration.",
+    )
 
     return parser
 
@@ -79,6 +85,9 @@ def main() -> None:
 
         if not result.safe:
             raise SystemExit(1)
+
+    elif args.command == "quickstart":
+        raise SystemExit(run_quickstart())
 
 
 if __name__ == "__main__":

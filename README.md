@@ -58,6 +58,19 @@ Check the CLI:
 safecontext --help
 ```
 
+### Run the synthetic quickstart
+
+For a first look at the complete privacy flow without using real confidential
+data:
+
+```bash
+safecontext quickstart
+```
+
+The command creates synthetic operational data, detects example identifiers,
+protects them locally, irreversibly redacts a synthetic secret, and verifies
+that the original demo values are absent from the protected output.
+
 ### Inspect a file
 
 ```bash
@@ -130,6 +143,7 @@ development and demonstration, not for uploading real corporate logs.
 ## Commands
 
 ```text
+safecontext quickstart
 safecontext inspect <file>
 safecontext protect <file>
 safecontext validate <file>
