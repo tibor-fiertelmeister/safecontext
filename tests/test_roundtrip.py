@@ -3,10 +3,13 @@ from safecontext.mapping import MappingVault
 
 
 def test_round_trip_restores_identifiers_and_not_secrets():
+    secret_value = "SyntheticPasswordValue987"
+
     raw = (
         "alice@example.com connected to prod-db-01.internal "
-        "from 10.20.30.40 password=SuperSecret123"
+        f"from 10.20.30.40 password={secret_value}"
     )
+
     vault = MappingVault(salt="test-salt")
 
     protected = protect_text(raw, vault)
@@ -14,23 +17,30 @@ def test_round_trip_restores_identifiers_and_not_secrets():
     assert "alice@example.com" not in protected
     assert "prod-db-01.internal" not in protected
     assert "10.20.30.40" not in protected
-    assert "SuperSecret123" not in protected
+
+    # Secrets must be irreversibly redacted.
+    assert secret_value not in protected
     assert "[SECRET_REDACTED]" in protected
 
     restored = restore_text(protected, vault)
 
+    # Pseudonymized identifiers must be restorable.
     assert "alice@example.com" in restored
     assert "prod-db-01.internal" in restored
     assert "10.20.30.40" in restored
-    assert "SuperSecret123" not in restored
+
+    # Secrets must never be restored.
+    assert secret_value not in restored
     assert "[SECRET_REDACTED]" in restored
 
 
 def test_same_entity_gets_same_pseudonym():
     vault = MappingVault(salt="test-salt")
+
     raw = "10.20.30.40 failed. Later 10.20.30.40 succeeded."
 
     protected = protect_text(raw, vault)
+
     tokens = [
         word.strip(".")
         for word in protected.split()
