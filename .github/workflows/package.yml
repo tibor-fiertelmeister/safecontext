@@ -1,0 +1,49 @@
+name: SafeContext Package
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Build package
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install build
+
+      - name: Build SafeContext
+        run: python -m build
+
+      - name: Show package artifacts
+        run: ls -lh dist/
+
+      - name: Install built wheel
+        shell: bash
+        run: |
+          python -m pip install --force-reinstall dist/*.whl
+          safecontext --help
+
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: safecontext-package
+          path: dist/*
