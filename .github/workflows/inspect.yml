@@ -1,0 +1,33 @@
+name: SafeContext Privacy Inspector
+
+on:
+  workflow_dispatch:
+
+jobs:
+  inspect:
+    name: Inspect synthetic sample
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install SafeContext
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Show synthetic input
+        run: |
+          echo "===== SYNTHETIC INPUT ====="
+          cat examples/sample.log
+
+      - name: Run SafeContext Privacy Inspector
+        run: |
+          echo "===== PRIVACY INSPECTION ====="
+          safecontext inspect examples/sample.log
