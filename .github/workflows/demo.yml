@@ -1,0 +1,70 @@
+name: Run SafeContext Demo
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  demo:
+    name: Protect synthetic sample log
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install SafeContext
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Show synthetic input
+        run: |
+          echo "===== ORIGINAL SYNTHETIC LOG ====="
+          cat examples/sample.log
+
+      - name: Protect log with SafeContext
+        run: |
+          safecontext protect examples/sample.log
+
+      - name: Show protected output
+        run: |
+          echo "===== PROTECTED LOG ====="
+          cat examples/sample.protected.log
+
+      - name: Verify sensitive values are gone
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          text = Path("examples/sample.protected.log").read_text()
+
+          forbidden = [
+              "alice@example.com",
+              "bob@example.com",
+              "prod-auth-01.internal",
+              "api-01.internal",
+              "10.20.30.40",
+              "10.20.30.55",
+              "synthetic-demo-key-123",
+          ]
+
+          leaked = [value for value in forbidden if value in text]
+
+          if leaked:
+              raise SystemExit(
+                  "PRIVACY CHECK FAILED. Values still present: "
+                  + ", ".join(leaked)
+              )
+
+          print("Privacy check: PASS")
+          print("Known synthetic sensitive values are absent.")
+          PY
