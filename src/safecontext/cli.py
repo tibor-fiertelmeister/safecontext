@@ -7,6 +7,8 @@ from pathlib import Path
 
 from .core import protect_file, restore_file
 from .inspect import inspect_text
+from .mapping import MappingVault
+from .policy import load_policy
 from .quickstart import run_quickstart
 from .validate import format_validation_report, validate_text
 
@@ -22,6 +24,7 @@ def build_parser() -> argparse.ArgumentParser:
     protect.add_argument("input", type=Path)
     protect.add_argument("-o", "--output", type=Path)
     protect.add_argument("-m", "--mapping", type=Path)
+    protect.add_argument("-p", "--policy", type=Path)
 
     restore = subparsers.add_parser("restore", help="Restore pseudonyms locally.")
     restore.add_argument("input", type=Path)
@@ -33,12 +36,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Inspect a file for sensitive entities without modifying it.",
     )
     inspect.add_argument("input", type=Path)
+    inspect.add_argument("-p", "--policy", type=Path)
 
     validate = subparsers.add_parser(
         "validate",
         help="Fail if a file still contains unprotected sensitive data.",
     )
     validate.add_argument("input", type=Path)
+    validate.add_argument("-p", "--policy", type=Path)
+    validate.add_argument("-m", "--mapping", type=Path)
 
     subparsers.add_parser(
         "quickstart",
@@ -58,7 +64,8 @@ def main() -> None:
         mapping = args.mapping or args.input.with_name(
             f".{args.input.stem}.safecontext-map.json"
         )
-        protect_file(args.input, output, mapping)
+        policy = load_policy(args.policy) if args.policy else None
+        protect_file(args.input, output, mapping, policy=policy)
         print(f"Protected file: {output}")
         print(f"Local mapping:  {mapping}")
         print(
@@ -75,14 +82,25 @@ def main() -> None:
 
     elif args.command == "inspect":
         raw = args.input.read_text(encoding="utf-8")
-        report = inspect_text(raw)
+        policy = load_policy(args.policy) if args.policy else None
+        report = inspect_text(raw, policy=policy)
         print(report)
 
     elif args.command == "validate":
         raw = args.input.read_text(encoding="utf-8")
-        result = validate_text(raw)
+        policy = load_policy(args.policy) if args.policy else None
+        vault = MappingVault.load(args.mapping) if args.mapping else None
+        result = validate_text(raw, policy=policy, vault=vault)
+        if args.mapping is None:
+            if result.safe:
+                print(
+                    "SafeContext Privacy Gate\n\nStatus: BLOCKED\n\n"
+                    "A local mapping is required to verify protected output."
+                )
+            else:
+                print(format_validation_report(result))
+            raise SystemExit(1)
         print(format_validation_report(result))
-
         if not result.safe:
             raise SystemExit(1)
 

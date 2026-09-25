@@ -35,6 +35,8 @@ def _validate_rule(raw_rule: Any, expected_action: str) -> PolicyRule:
 
     if not isinstance(name, str) or not name.strip():
         raise ValueError("Each policy rule requires a non-empty 'name'.")
+    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", name.strip()):
+        raise ValueError("Policy rule names must contain only letters, digits and underscores.")
 
     if not isinstance(fields, list) or not fields:
         raise ValueError(
@@ -63,6 +65,12 @@ def load_policy(path: Path) -> DetectionPolicy:
 
     if not isinstance(payload, dict):
         raise ValueError("Policy root must be a JSON object.")
+    if set(payload) - {"identifiers", "secrets"}:
+        raise ValueError("Policy contains an unknown top-level key.")
+    if not isinstance(payload.get("identifiers", []), list):
+        raise ValueError("Policy 'identifiers' must be a list.")
+    if not isinstance(payload.get("secrets", []), list):
+        raise ValueError("Policy 'secrets' must be a list.")
 
     identifier_rules = tuple(
         _validate_rule(rule, "PSEUDONYMIZE")

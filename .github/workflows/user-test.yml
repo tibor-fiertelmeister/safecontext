@@ -1,4 +1,4 @@
-name: SafeContext User Installation Test
+name: SafeContext Current Source Installation Test
 
 on:
   workflow_dispatch:
@@ -12,20 +12,19 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Download SafeContext v0.1.1 release package
+      - name: Build and install wheel from current source
         run: |
-          curl -L \
-            -o safecontext-0.1.1-py3-none-any.whl \
-            https://github.com/tibor-fiertelmeister/safecontext/releases/download/v0.1.1/safecontext-0.1.1-py3-none-any.whl
-
-      - name: Install SafeContext from release wheel
-        run: |
-          python -m pip install safecontext-0.1.1-py3-none-any.whl
+          python -m pip install build
+          python -m build --wheel
+          python -m pip install dist/*.whl
 
       - name: Verify installed CLI
         run: |
@@ -54,7 +53,8 @@ jobs:
 
       - name: Validate protected output
         run: |
-          safecontext validate incident.protected.log
+          safecontext validate incident.protected.log \
+            --mapping .incident.safecontext-map.json
 
       - name: Simulate LLM response
         run: |
@@ -101,5 +101,5 @@ jobs:
           assert "SafeContextDemoSecret123" not in restored
           assert "[SECRET_REDACTED]" in restored
 
-          print("SUCCESS: SafeContext v0.1.1 passed the clean-user end-to-end test.")
+          print("SUCCESS: Current SafeContext source passed the clean-user end-to-end test.")
           PY

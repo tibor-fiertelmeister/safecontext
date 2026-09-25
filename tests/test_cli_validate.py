@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from safecontext.cli import main
+from safecontext.mapping import MappingVault
 
 
 def test_validate_cli_returns_success_for_safe_file(
@@ -11,20 +12,21 @@ def test_validate_cli_returns_success_for_safe_file(
     capsys: pytest.CaptureFixture[str],
 ):
     input_file = tmp_path / "safe.log"
-    input_file.write_text(
-        "EMAIL_AB12CD34 connected to HOST_1234ABCD from IP_ABCDEF12",
-        encoding="utf-8",
-    )
+    vault = MappingVault()
+    email = vault.pseudonym_for("EMAIL", "alice@example.com")
+    input_file.write_text(f"{email} connected safely", encoding="utf-8")
+    mapping = tmp_path / "map.json"
+    vault.save(mapping)
 
     monkeypatch.setattr(
         "sys.argv",
-        ["safecontext", "validate", str(input_file)],
+        ["safecontext", "validate", str(input_file), "-m", str(mapping)],
     )
 
     main()
 
     output = capsys.readouterr().out
-    assert "Status: SAFE TO SHARE" in output
+    assert "Status: NO DETECTED LEAKS" in output
 
 
 def test_validate_cli_returns_exit_1_for_unsafe_file(

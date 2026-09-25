@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .detectors import detect_entities
+from .policy import DetectionPolicy
 
 
 @dataclass
@@ -15,12 +16,16 @@ class InspectionResult:
     contains_sensitive_data: bool
 
 
-def inspect_text(text: str, path: Path | None = None) -> InspectionResult:
+def inspect_text(
+    text: str,
+    path: Path | None = None,
+    policy: DetectionPolicy | None = None,
+) -> InspectionResult:
     """
     Inspect text for sensitive entities without modifying the input.
     """
 
-    entities = detect_entities(text)
+    entities = detect_entities(text, policy)
 
     counts = Counter(entity.kind for entity in entities)
 

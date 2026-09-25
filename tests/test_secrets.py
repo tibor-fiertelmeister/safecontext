@@ -43,3 +43,18 @@ def test_redacts_standalone_jwt():
 
     assert jwt not in result
     assert result == "[SECRET_REDACTED]"
+
+
+def test_redacts_complete_quoted_password_with_spaces():
+    result = redact_secrets('password="two words"')
+    assert result == 'password="[SECRET_REDACTED]"'
+
+
+def test_redacts_complete_quoted_json_password():
+    result = redact_secrets('{"password": "two words"}')
+    assert result == '{"password": "[SECRET_REDACTED]"}'
+
+
+def test_unterminated_quoted_password_redacts_to_end_of_line():
+    result = redact_secrets('password="two words')
+    assert result == "password=[SECRET_REDACTED]"

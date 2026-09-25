@@ -100,16 +100,20 @@ password=example-value   -> password=[SECRET_REDACTED]
 ### Validate before crossing the privacy boundary
 
 ```bash
-safecontext validate incident.protected.log
+safecontext validate incident.protected.log -m .incident.safecontext-map.json
 ```
 
-The intended behavior is fail-closed:
+The gate blocks detected raw values and token-shaped values it cannot verify
+against the local mapping. A successful result says:
 
 ```text
-SAFE
+NO DETECTED LEAKS
 ```
 
-or a blocked result if detectable unprotected sensitive content remains.
+This is not proof that the file contains no sensitive data. Unknown secret
+formats and context-specific identifiers can escape rule-based detection.
+The command requires a mapping to return success. You can run it without one
+to check whether a raw file is blocked, but it will not approve that file.
 
 ### Restore local context
 
@@ -131,6 +135,19 @@ customer, ticket, asset, tenant, or similar identifiers.
 Keep organization-specific policy files local when they reveal internal naming
 conventions or other sensitive information.
 
+Apply one policy consistently across the workflow:
+
+~~~bash
+safecontext inspect incident.log -p policy.json
+safecontext protect incident.log -p policy.json
+safecontext validate incident.protected.log \
+  -p policy.json -m .incident.safecontext-map.json
+~~~
+
+The mapping stores original identifiers in plaintext with restricted file
+permissions on POSIX systems. Protect it as sensitive material; it is not
+encrypted. Use only synthetic data in public workflows.
+
 ## Trust boundary
 
 SafeContext is designed around one rule:
@@ -146,7 +163,7 @@ development and demonstration, not for uploading real corporate logs.
 safecontext quickstart
 safecontext inspect <file>
 safecontext protect <file>
-safecontext validate <file>
+safecontext validate <file> [-p policy.json] -m mapping.json
 safecontext restore <file> -m <mapping-file>
 ```
 

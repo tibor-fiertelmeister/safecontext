@@ -109,3 +109,10 @@ def test_invalid_policy_is_rejected(tmp_path):
     )
     with pytest.raises(ValueError):
         load_policy(policy_path)
+
+
+def test_unknown_policy_key_is_rejected_instead_of_silently_ignored(tmp_path):
+    policy_path = tmp_path / "typo.json"
+    policy_path.write_text('{"identifierz": []}', encoding="utf-8")
+    with pytest.raises(ValueError, match="unknown"):
+        load_policy(policy_path)

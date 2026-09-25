@@ -37,7 +37,7 @@ def test_validate_accepts_protected_content():
     vault = MappingVault(salt="validation-salt")
 
     protected = protect_text(raw, vault)
-    result = validate_text(protected)
+    result = validate_text(protected, vault=vault)
 
     assert result.safe is True
     assert result.counts == {}
@@ -51,10 +51,20 @@ def test_validate_accepts_redaction_marker():
 
 
 def test_validate_accepts_contextual_pseudonym():
-    result = validate_text("customer_id=CUSTOMER_ID_F4B57E0E")
+    vault = MappingVault(salt="validation-salt")
+    token = vault.pseudonym_for("CUSTOMER_ID", "CUST-12345")
+    result = validate_text(f"customer_id={token}", vault=vault)
 
     assert result.safe is True
     assert result.counts == {}
+
+
+def test_validate_blocks_unverified_pseudonym_even_if_format_looks_right():
+    assert not validate_text("customer_id=CUSTOMER_ID_DEADBEEF").safe
+    assert not validate_text(
+        "customer_id=CUSTOMER_ID_DEADBEEF", vault=MappingVault()
+    ).safe
+    assert not validate_text("EMAIL_DEADBEEF").safe
 
 
 def test_validate_still_blocks_fake_contextual_value():
@@ -83,5 +93,5 @@ def test_safe_validation_report():
     report = format_validation_report(result)
 
     assert result.safe is True
-    assert "Status: SAFE TO SHARE" in report
-    assert "No unprotected sensitive values detected." in report
+    assert "Status: NO DETECTED LEAKS" in report
+    assert "not a guarantee of safe sharing" in report

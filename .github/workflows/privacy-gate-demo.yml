@@ -85,7 +85,8 @@ jobs:
           echo "5. PRIVACY GATE AFTER PROTECTION"
           echo "========================================"
 
-          safecontext validate /tmp/privacy-gate-demo.protected.log
+          safecontext validate /tmp/privacy-gate-demo.protected.log \
+            --mapping /tmp/privacy-gate-demo.safecontext-map.json
 
           echo
           echo "Protected content passed the Privacy Gate."

@@ -31,31 +31,17 @@ jobs:
           echo "=== SYNTHETIC RAW INPUT ==="
           cat examples/custom-policy-demo.log
 
-      - name: Load custom policy and protect input
+      - name: Protect using custom policy
         run: |
-          python - <<'PY'
-          from pathlib import Path
-          from safecontext.core import protect_text
-          from safecontext.mapping import MappingVault
-          from safecontext.policy import load_policy
+          safecontext protect examples/custom-policy-demo.log \
+            --policy examples/custom-policy.json \
+            --mapping .custom-policy-demo.safecontext-map.json
 
-          raw_path = Path("examples/custom-policy-demo.log")
-          policy_path = Path("examples/custom-policy.json")
-          protected_path = Path("examples/custom-policy-demo.protected.log")
-          mapping_path = Path(".custom-policy-demo.safecontext-map.json")
-
-          raw = raw_path.read_text(encoding="utf-8")
-          policy = load_policy(policy_path)
-          vault = MappingVault(salt="safecontext-demo-salt")
-
-          protected = protect_text(raw, vault, policy=policy)
-          protected_path.write_text(protected, encoding="utf-8")
-          vault.save(mapping_path)
-
-          print("Custom policy loaded.")
-          print(f"Identifier rules: {len(policy.identifiers)}")
-          print(f"Secret rules: {len(policy.secrets)}")
-          PY
+      - name: Validate with the same policy and mapping
+        run: |
+          safecontext validate examples/custom-policy-demo.protected.log \
+            --policy examples/custom-policy.json \
+            --mapping .custom-policy-demo.safecontext-map.json
 
       - name: Show protected output
         run: |

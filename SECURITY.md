@@ -22,6 +22,10 @@ SafeContext is experimental software.
 Detection is rule- and policy-based. A successful validation result means that
 the configured/current detectors did not identify unprotected sensitive
 content; it is not proof that the content contains no sensitive information.
+Use the same policy and local mapping for protection and validation. The mapping
+is plaintext and must be protected as sensitive data. File permissions are
+restricted on POSIX systems, but this does not provide encryption at rest or
+equivalent protection on every platform.
 
 Do not use GitHub Actions or public issue content for real confidential company
 logs, credentials, mappings, or policies.

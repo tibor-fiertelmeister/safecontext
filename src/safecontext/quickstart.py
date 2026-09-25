@@ -6,6 +6,8 @@ from pathlib import Path
 
 from .core import protect_file
 from .detectors import detect_entities, redact_secrets
+from .mapping import MappingVault
+from .validate import validate_text
 
 
 SYNTHETIC_INPUT = (
@@ -55,7 +57,10 @@ def run_quickstart(directory: Path | None = None) -> int:
     raw_identifier_leaked = any(value in protected for value in original_values)
     raw_secret_leaked = "SC_DEMO_SECRET_12345" in protected
     marker_present = "[SECRET_REDACTED]" in protected
-    safe = not raw_identifier_leaked and not raw_secret_leaked and marker_present
+    safe = (
+        not raw_identifier_leaked and not raw_secret_leaked and marker_present
+        and validate_text(protected, vault=MappingVault.load(mapping_path)).safe
+    )
 
     print()
     print("[4/4] Privacy validation")
