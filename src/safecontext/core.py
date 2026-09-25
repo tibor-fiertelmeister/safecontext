@@ -5,28 +5,58 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from .detectors import detect_entities, redact_secrets
+from .detectors import detect_entities
 from .mapping import MappingVault
 
 
-TOKEN_PATTERN = re.compile(r"\b(?:EMAIL|IP|HOST)_[A-F0-9]{8}\b")
+# These are reversible identifiers. Secrets are never placed in the vault.
+PSEUDONYM_KINDS = (
+    "EMAIL",
+    "IP",
+    "HOST",
+    "CUSTOMER_ID",
+    "USER_ID",
+    "ACCOUNT_ID",
+    "TENANT_ID",
+    "SESSION_ID",
+)
+
+TOKEN_PATTERN = re.compile(
+    rf"\b(?:{'|'.join(PSEUDONYM_KINDS)})_[A-F0-9]{{8}}\b"
+)
 
 
 def protect_text(text: str, vault: MappingVault) -> str:
-    """Redact secrets and replace detected identifiers with pseudonyms."""
-    protected = redact_secrets(text)
-    detections = detect_entities(protected)
+    """Protect sensitive text according to each detector's requested action.
 
-    # Replace from the end so stored character offsets remain valid.
+    Reversible identifiers are pseudonymized into the local mapping vault.
+    Secrets are irreversibly replaced with [SECRET_REDACTED].
+    """
+    protected = text
+    detections = detect_entities(text)
+
+    # Replace from the end so the original character offsets stay valid.
     for detection in reversed(detections):
-        token = vault.pseudonym_for(detection.kind, detection.value)
-        protected = protected[: detection.start] + token + protected[detection.end :]
+        if detection.action == "REDACT":
+            replacement = "[SECRET_REDACTED]"
+        elif detection.action == "PSEUDONYMIZE":
+            replacement = vault.pseudonym_for(detection.kind, detection.value)
+        else:
+            # Fail closed for an unknown detector action.
+            replacement = "[SENSITIVE_REDACTED]"
+
+        protected = (
+            protected[: detection.start]
+            + replacement
+            + protected[detection.end :]
+        )
 
     return protected
 
 
 def restore_text(text: str, vault: MappingVault) -> str:
-    """Restore exact SafeContext pseudonyms from the local mapping."""
+    """Restore reversible SafeContext pseudonyms from the local mapping."""
+
     def replace(match: re.Match[str]) -> str:
         token = match.group(0)
         return vault.reverse.get(token, token)

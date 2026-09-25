@@ -18,16 +18,10 @@ class Detection:
     action: str = "PSEUDONYMIZE"
 
 
-# ---------------------------------------------------------------------------
-# Structured identifiers
-# ---------------------------------------------------------------------------
-
 PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
         "EMAIL",
-        re.compile(
-            r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"
-        ),
+        re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"),
     ),
     (
         "IP",
@@ -46,14 +40,6 @@ PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
         ),
     ),
 )
-
-
-# ---------------------------------------------------------------------------
-# Context-aware identifiers
-#
-# These values may not be sensitive by format alone. Their surrounding field
-# name provides the context required to classify them.
-# ---------------------------------------------------------------------------
 
 CONTEXT_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
@@ -92,14 +78,6 @@ CONTEXT_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
         ),
     ),
 )
-
-
-# ---------------------------------------------------------------------------
-# Secrets
-#
-# Secrets are intentionally REDACTED rather than pseudonymized.
-# They should never be recoverable from LLM-visible content.
-# ---------------------------------------------------------------------------
 
 SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
@@ -145,8 +123,6 @@ def _overlaps(
     span: tuple[int, int],
     occupied: list[tuple[int, int]],
 ) -> bool:
-    """Return True when a span overlaps an existing detection."""
-
     return any(
         span[0] < end and span[1] > start
         for start, end in occupied
@@ -159,18 +135,9 @@ def detect_entities(text: str) -> list[Detection]:
     detections: list[Detection] = []
     occupied: list[tuple[int, int]] = []
 
-    # ------------------------------------------------------------------
-    # Secrets first.
-    #
-    # They have the highest priority because a token may contain strings
-    # that would otherwise look like another identifier.
-    # ------------------------------------------------------------------
-
+    # Secrets have highest priority.
     for kind, pattern in SECRET_PATTERNS:
         for match in pattern.finditer(text):
-
-            # Most secret patterns capture only the secret value.
-            # JWT matches the entire value.
             if match.lastindex:
                 start, end = match.span(1)
                 value = match.group(1)
@@ -179,7 +146,6 @@ def detect_entities(text: str) -> list[Detection]:
                 value = match.group(0)
 
             span = (start, end)
-
             if _overlaps(span, occupied):
                 continue
 
@@ -193,17 +159,12 @@ def detect_entities(text: str) -> list[Detection]:
                     action="REDACT",
                 )
             )
-
             occupied.append(span)
 
-    # ------------------------------------------------------------------
-    # Strong structured identifiers
-    # ------------------------------------------------------------------
-
+    # Strong structured identifiers.
     for kind, pattern in PATTERNS:
         for match in pattern.finditer(text):
             span = match.span()
-
             if _overlaps(span, occupied):
                 continue
 
@@ -217,19 +178,13 @@ def detect_entities(text: str) -> list[Detection]:
                     action="PSEUDONYMIZE",
                 )
             )
-
             occupied.append(span)
 
-    # ------------------------------------------------------------------
-    # Context-derived identifiers
-    # ------------------------------------------------------------------
-
+    # Context-derived identifiers.
     for kind, pattern in CONTEXT_PATTERNS:
         for match in pattern.finditer(text):
-
             start, end = match.span(1)
             span = (start, end)
-
             if _overlaps(span, occupied):
                 continue
 
@@ -243,47 +198,30 @@ def detect_entities(text: str) -> list[Detection]:
                     action="PSEUDONYMIZE",
                 )
             )
-
             occupied.append(span)
 
-    return sorted(
-        detections,
-        key=lambda item: item.start,
-    )
+    return sorted(detections, key=lambda item: item.start)
 
 
 def redact_secrets(text: str) -> str:
-    """Redact detected secrets while preserving useful surrounding context."""
+    """Redact secrets while preserving useful surrounding context.
 
+    This helper remains public for inspection/unit tests. protect_text uses
+    detect_entities directly so every sensitive value is transformed exactly
+    once according to its action.
+    """
     result = text
+    detections = [
+        detection
+        for detection in detect_entities(text)
+        if detection.action == "REDACT"
+    ]
 
-    # Authorization headers need special handling.
-    result = re.sub(
-        r"(?i)\bAuthorization\s*:\s*Bearer\s+"
-        r"[A-Za-z0-9._~+/=-]+",
-        "Authorization: Bearer [SECRET_REDACTED]",
-        result,
-    )
-
-    # Generic key/value secrets.
-    result = re.sub(
-        r"(?i)\b(password|passwd|pwd|secret|"
-        r"api[_-]?key|apikey|x-api-key|"
-        r"access[_-]?token|refresh[_-]?token|token)"
-        r"\s*([:=])\s*[\"']?[^\s,;\"']+[\"']?",
-        lambda m: (
-            f"{m.group(1)}{m.group(2)}[SECRET_REDACTED]"
-        ),
-        result,
-    )
-
-    # Standalone JWTs.
-    result = re.sub(
-        r"\beyJ[A-Za-z0-9_-]+\."
-        r"[A-Za-z0-9_-]+\."
-        r"[A-Za-z0-9_-]+\b",
-        "[SECRET_REDACTED]",
-        result,
-    )
+    for detection in reversed(detections):
+        result = (
+            result[: detection.start]
+            + "[SECRET_REDACTED]"
+            + result[detection.end :]
+        )
 
     return result

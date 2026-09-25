@@ -1,8 +1,4 @@
-"""Diagnostic tests for SafeContext's secret-redaction pipeline.
-
-These tests intentionally use structural checks and dynamically assembled
-fixtures so CI log masking cannot obscure which stage failed.
-"""
+"""Pipeline diagnostics for SafeContext."""
 
 from safecontext.core import protect_text, restore_text
 from safecontext.detectors import redact_secrets
@@ -10,8 +6,6 @@ from safecontext.mapping import MappingVault
 
 
 def _password_fixture() -> tuple[str, str]:
-    # Assemble the label at runtime so the full key/value fixture is not a
-    # literal secret-looking string in the source or traceback.
     key = "".join(("pass", "word"))
     value = "".join(("SC", "_DIAG_", "VALUE_", "987"))
     return f"{key}={value}", value
@@ -28,8 +22,7 @@ def test_diagnostic_password_redactor_stage():
     result = redact_secrets(raw)
 
     assert secret not in result
-    assert "[SECRET_REDACTED]" in result
-    assert result.startswith("password=")
+    assert result == "password=[SECRET_REDACTED]"
 
 
 def test_diagnostic_password_survives_protection_as_redacted_marker():
@@ -43,8 +36,7 @@ def test_diagnostic_password_survives_protection_as_redacted_marker():
     protected = protect_text(raw, vault)
 
     assert secret not in protected
-    assert "[SECRET_REDACTED]" in protected
-    assert "password=" in protected
+    assert "password=[SECRET_REDACTED]" in protected
     assert "alice@example.com" not in protected
     assert "prod-db-01.internal" not in protected
     assert "10.20.30.40" not in protected
@@ -65,8 +57,7 @@ def test_diagnostic_password_remains_redacted_after_restore():
     assert "prod-db-01.internal" in restored
     assert "10.20.30.40" in restored
     assert secret not in restored
-    assert "[SECRET_REDACTED]" in restored
-    assert "password=" in restored
+    assert "password=[SECRET_REDACTED]" in restored
 
 
 def test_diagnostic_bearer_redactor_stage():
@@ -74,9 +65,7 @@ def test_diagnostic_bearer_redactor_stage():
     result = redact_secrets(raw)
 
     assert token not in result
-    assert "[SECRET_REDACTED]" in result
-    assert result.startswith("Authorization:")
-    assert "Bearer" in result
+    assert result == "Authorization: Bearer [SECRET_REDACTED]"
 
 
 def test_diagnostic_bearer_through_protect_text():
@@ -87,9 +76,7 @@ def test_diagnostic_bearer_through_protect_text():
     protected = protect_text(raw, vault)
 
     assert token not in protected
-    assert "[SECRET_REDACTED]" in protected
-    assert "Authorization:" in protected
-    assert "Bearer" in protected
+    assert "Authorization: Bearer [SECRET_REDACTED]" in protected
     assert "prod-api.internal" not in protected
     assert "10.20.30.40" not in protected
 

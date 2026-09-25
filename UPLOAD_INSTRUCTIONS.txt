@@ -1,0 +1,21 @@
+SafeContext pipeline fix
+
+Upload these files to the SAME paths shown inside this package:
+
+src/safecontext/core.py
+src/safecontext/detectors.py
+tests/test_roundtrip.py
+tests/test_secrets.py
+tests/test_diagnostics.py
+
+Do not upload the .py files to the repository root.
+
+What this fixes:
+- protect_text now respects Detection.action
+- REDACT findings become [SECRET_REDACTED] and never enter MappingVault
+- PSEUDONYMIZE findings enter MappingVault and remain reversible
+- context identifiers such as CUSTOMER_ID are restorable
+- Bearer context is preserved while the token value is removed
+
+Suggested commit:
+fix: enforce redaction and pseudonymization actions
