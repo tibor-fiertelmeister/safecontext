@@ -1,0 +1,3 @@
+2026-09-25T09:15:01Z employee_id=EMP-99182 user=alice@example.com source=10.20.30.40 host=prod-db-01.internal case_id=INC-2026-5541
+2026-09-25T09:15:04Z application_id=APP-8821 employee_number=EMP-99182 private_token=SyntheticPrivateValue987
+2026-09-25T09:15:08Z case_number=INC-2026-5541 status=investigating
