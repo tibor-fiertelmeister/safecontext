@@ -18,18 +18,15 @@ def test_round_trip_restores_identifiers_and_not_secrets():
     assert "prod-db-01.internal" not in protected
     assert "10.20.30.40" not in protected
 
-    # Secrets must be irreversibly redacted.
     assert secret_value not in protected
     assert "[SECRET_REDACTED]" in protected
 
     restored = restore_text(protected, vault)
 
-    # Pseudonymized identifiers must be restorable.
     assert "alice@example.com" in restored
     assert "prod-db-01.internal" in restored
     assert "10.20.30.40" in restored
 
-    # Secrets must never be restored.
     assert secret_value not in restored
     assert "[SECRET_REDACTED]" in restored
 
