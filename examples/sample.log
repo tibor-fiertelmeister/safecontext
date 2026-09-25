@@ -1,0 +1,4 @@
+2026-09-25T08:10:01Z INFO user=alice@example.com login failed host=prod-auth-01.internal src=10.20.30.40
+2026-09-25T08:10:08Z WARN user=alice@example.com login failed host=prod-auth-01.internal src=10.20.30.40
+2026-09-25T08:10:15Z INFO user=bob@example.com login succeeded host=prod-auth-01.internal src=10.20.30.55
+2026-09-25T08:11:02Z ERROR api_key=synthetic-demo-key-123 request failed host=api-01.internal
