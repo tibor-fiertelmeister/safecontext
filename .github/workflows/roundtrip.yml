@@ -26,42 +26,55 @@ jobs:
         run: |
           safecontext protect examples/sample.log
 
-      - name: Verify protected log
+      - name: Show protected log
         run: |
           echo "===== PROTECTED LOG ====="
           cat examples/sample.protected.log
 
-          if grep -q "alice@example.com" examples/sample.protected.log; then
-            echo "ERROR: email address leaked into protected output"
-            exit 1
-          fi
+      - name: Verify sensitive values are removed
+        run: |
+          python - <<'PY'
+          from pathlib import Path
 
-          if grep -q "prod-auth-01.internal" examples/sample.protected.log; then
-            echo "ERROR: hostname leaked into protected output"
-            exit 1
-          fi
+          protected = Path("examples/sample.protected.log").read_text()
 
-          if grep -q "10.20.30.40" examples/sample.protected.log; then
-            echo "ERROR: IP address leaked into protected output"
-            exit 1
-          fi
+          sensitive_values = [
+              "alice@example.com",
+              "prod-auth-01.internal",
+              "10.20.30.40",
+          ]
 
-          echo "Protected log validation passed."
+          leaked = [
+              value for value in sensitive_values
+              if value in protected
+          ]
+
+          if leaked:
+              raise SystemExit(
+                  "PRIVACY CHECK FAILED. Sensitive values found: "
+                  + ", ".join(leaked)
+              )
+
+          print("PRIVACY CHECK PASSED")
+          PY
 
       - name: Simulate external LLM response
         run: |
-          cat > examples/llm-response.md <<'EOF'
-          # Security Analysis
+          {
+            echo "# Security Analysis"
+            echo
+            echo "The following protected events were analyzed:"
+            echo
+            cat examples/sample.protected.log
+            echo
+            echo "Recommendation:"
+            echo "Investigate the affected pseudonymized entities."
+          } > examples/llm-response.md
 
-          Multiple failed authentication attempts were observed.
-
-          Recommended action:
-
-          Investigate EMAIL_3254C673 and review authentication events on
-          HOST_2221EF20 originating from IP_6509F946.
-
-          A separate request contained [SECRET_REDACTED].
-          EOF
+      - name: Show simulated LLM response
+        run: |
+          echo "===== SIMULATED LLM RESPONSE ====="
+          cat examples/llm-response.md
 
       - name: Restore local context
         run: |
@@ -80,15 +93,23 @@ jobs:
           python - <<'PY'
           from pathlib import Path
 
-          output = Path("examples/llm-response.restored.md").read_text()
+          original = Path("examples/sample.log").read_text()
+          restored = Path("examples/llm-response.restored.md").read_text()
 
           expected = [
-              "alice@example.com",
-              "prod-auth-01.internal",
-              "10.20.30.40",
+              value
+              for value in [
+                  "alice@example.com",
+                  "prod-auth-01.internal",
+                  "10.20.30.40",
+              ]
+              if value in original
           ]
 
-          missing = [value for value in expected if value not in output]
+          missing = [
+              value for value in expected
+              if value not in restored
+          ]
 
           if missing:
               raise SystemExit(
@@ -96,12 +117,12 @@ jobs:
                   + ", ".join(missing)
               )
 
-          if "[SECRET_REDACTED]" not in output:
+          if "[SECRET_REDACTED]" not in restored:
               raise SystemExit(
                   "ROUND-TRIP FAILED. Secret redaction marker disappeared."
               )
 
           print("ROUND-TRIP SUCCESS")
-          print("Identifiers restored correctly.")
-          print("Secret remained redacted.")
+          print("Original identifiers restored correctly.")
+          print("Secrets remained redacted.")
           PY
