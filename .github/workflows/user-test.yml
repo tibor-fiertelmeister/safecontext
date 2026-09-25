@@ -1,0 +1,105 @@
+name: SafeContext User Installation Test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  user-test:
+    name: Test SafeContext as a new user
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download SafeContext v0.1.1 release package
+        run: |
+          curl -L \
+            -o safecontext-0.1.1-py3-none-any.whl \
+            https://github.com/tibor-fiertelmeister/safecontext/releases/download/v0.1.1/safecontext-0.1.1-py3-none-any.whl
+
+      - name: Install SafeContext from release wheel
+        run: |
+          python -m pip install safecontext-0.1.1-py3-none-any.whl
+
+      - name: Verify installed CLI
+        run: |
+          safecontext --help
+
+      - name: Create synthetic incident log
+        run: |
+          cat > incident.log <<'EOF'
+          Incident investigation
+          User alice@example.com connected to prod-db-01.internal from 10.20.30.40.
+          Authentication failed.
+          password=SafeContextDemoSecret123
+          EOF
+
+      - name: Inspect sensitive input
+        run: |
+          safecontext inspect incident.log
+
+      - name: Protect sensitive input
+        run: |
+          safecontext protect incident.log
+
+      - name: Show protected output
+        run: |
+          cat incident.protected.log
+
+      - name: Validate protected output
+        run: |
+          safecontext validate incident.protected.log
+
+      - name: Simulate LLM response
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          protected = Path("incident.protected.log").read_text(encoding="utf-8")
+
+          Path("analysis.md").write_text(
+              "LLM ANALYSIS\n\n"
+              "The following protected incident data was analyzed:\n\n"
+              + protected
+              + "\nThe authentication activity should be investigated.\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Restore local context
+        run: |
+          safecontext restore analysis.md -m .incident.safecontext-map.json
+
+      - name: Show restored result
+        run: |
+          cat analysis.restored.md
+
+      - name: Verify end-to-end behavior
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          protected = Path("incident.protected.log").read_text(encoding="utf-8")
+          restored = Path("analysis.restored.md").read_text(encoding="utf-8")
+
+          assert "alice@example.com" not in protected
+          assert "prod-db-01.internal" not in protected
+          assert "10.20.30.40" not in protected
+          assert "SafeContextDemoSecret123" not in protected
+          assert "[SECRET_REDACTED]" in protected
+
+          assert "alice@example.com" in restored
+          assert "prod-db-01.internal" in restored
+          assert "10.20.30.40" in restored
+
+          assert "SafeContextDemoSecret123" not in restored
+          assert "[SECRET_REDACTED]" in restored
+
+          print("SUCCESS: SafeContext v0.1.1 passed the clean-user end-to-end test.")
+          PY
