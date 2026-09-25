@@ -2,36 +2,40 @@ from safecontext.detectors import redact_secrets
 
 
 def test_redacts_password():
-    raw = "password=SuperSecret123"
+    secret = "SyntheticPasswordValue987"
+    raw = f"password={secret}"
 
     result = redact_secrets(raw)
 
-    assert "SuperSecret123" not in result
+    assert secret not in result
     assert result == "password=[SECRET_REDACTED]"
 
 
 def test_redacts_api_key():
-    raw = "api_key=synthetic-demo-key-123"
+    secret = "synthetic-api-value-987"
+    raw = f"api_key={secret}"
 
     result = redact_secrets(raw)
 
-    assert "synthetic-demo-key-123" not in result
+    assert secret not in result
     assert result == "api_key=[SECRET_REDACTED]"
 
 
 def test_redacts_access_token():
-    raw = "access_token=synthetic-access-token"
+    secret = "synthetic-access-value-987"
+    raw = f"access_token={secret}"
 
     result = redact_secrets(raw)
 
-    assert "synthetic-access-token" not in result
+    assert secret not in result
     assert result == "access_token=[SECRET_REDACTED]"
 
 
 def test_redacts_bearer_token():
-    raw = "Authorization: Bearer synthetic.token.value"
+    token = "synthetic.bearer.value.987"
+    raw = f"Authorization: Bearer {token}"
 
     result = redact_secrets(raw)
 
-    assert "synthetic.token.value" not in result
+    assert token not in result
     assert result == "Authorization: [SECRET_REDACTED]"
