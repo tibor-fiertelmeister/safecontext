@@ -31,7 +31,11 @@ def test_same_entity_gets_same_pseudonym():
     raw = "10.20.30.40 failed. Later 10.20.30.40 succeeded."
 
     protected = protect_text(raw, vault)
-    tokens = [word.strip(".") for word in protected.split() if word.startswith("IP_")]
+    tokens = [
+        word.strip(".")
+        for word in protected.split()
+        if word.startswith("IP_")
+    ]
 
     assert len(tokens) == 2
     assert tokens[0] == tokens[1]
