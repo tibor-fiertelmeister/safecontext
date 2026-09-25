@@ -6,7 +6,7 @@ on:
       - "v*"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   release-build:
@@ -36,8 +36,14 @@ jobs:
           python -m pip install --force-reinstall dist/*.whl
           safecontext --help
 
-      - name: Upload release artifacts
+      - name: Upload workflow artifacts
         uses: actions/upload-artifact@v4
         with:
           name: safecontext-${{ github.ref_name }}
           path: dist/*
+
+      - name: Upload packages to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ github.ref_name }}" dist/* --clobber
