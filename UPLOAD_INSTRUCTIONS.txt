@@ -1,19 +1,27 @@
-SafeContext Privacy Gate false-positive fix
+SafeContext Privacy Gate Demo
 
-Replace exactly:
-  src/safecontext/validate.py
-  tests/test_validate.py
+Upload these two files to exactly these paths:
 
-Why:
-The privacy gate correctly re-detected contextual fields after protection, but
-it did not distinguish SafeContext-generated pseudonyms/redaction markers from
-raw sensitive values.
+NEW:
+  .github/workflows/privacy-gate-demo.yml
+  examples/privacy-gate-demo.log
 
-The fix treats only canonical SafeContext outputs as already protected:
-  [SECRET_REDACTED]
-  <KIND>_<8 uppercase hexadecimal characters>
-
-A lookalike such as CUSTOMER_ID_NOTSAFE remains BLOCKED.
+Do not upload them to the repository root.
 
 Suggested commit:
-  fix: recognize protected values in privacy gate
+  demo: add end-to-end privacy gate workflow
+
+After committing:
+1. Open GitHub -> Actions.
+2. Select "SafeContext Privacy Gate Demo".
+3. Click "Run workflow".
+4. Select main and run it.
+
+The demo intentionally uses synthetic data only.
+The workflow proves:
+- raw input is BLOCKED
+- inspect reports sensitive categories
+- protect pseudonymizes identifiers and redacts secrets
+- protected content is SAFE TO SHARE
+- a simulated LLM response can be restored locally
+- secrets are neither restored nor stored in the mapping
